@@ -1,0 +1,22 @@
+# Binaries
+out
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build files
+*.test
+*.out
+
+# Dependency directories (if you ever use vendoring)
+vendor/
+
+# IDE / Editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
