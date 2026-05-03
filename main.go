@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -71,6 +72,14 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 
+	type errorResponse struct {
+		Error string `json:"error"`
+	}
+
+	type validResponse struct {
+		CleanedBody string `json:"cleaned_body"`
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 
@@ -78,24 +87,28 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Something went wrong",
-		})
+		json.NewEncoder(w).Encode(errorResponse{Error: "Something went wrong"})
 		return
 	}
 
 	if len(params.Body) > 140 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Chirp is too long",
-		})
+		json.NewEncoder(w).Encode(errorResponse{Error: "Chirp is too long"})
 		return
 	}
 
+	words := strings.Split(params.Body, " ")
+	for i, word := range words {
+		lowered := strings.ToLower(word)
+		if lowered == "kerfuffle" || lowered == "sharbert" || lowered == "fornax" {
+			words[i] = "****"
+		}
+	}
+
+	cleaned := strings.Join(words, " ")
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{
-		"valid": true,
-	})
+	json.NewEncoder(w).Encode(validResponse{CleanedBody: cleaned})
 }
