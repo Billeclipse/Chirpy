@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -126,7 +127,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", handlerHealthz)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
-	mux.HandleFunc("POST /api/validate_chirp", handlerValidateChirp)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 
 	fileServer := http.FileServer(http.Dir("."))
@@ -148,17 +149,18 @@ func handlerHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body string `json:"body"`
+		Body   string `json:"body"`
+		UserID string `json:"user_id"`
 	}
 
-	type errorResponse struct {
-		Error string `json:"error"`
-	}
-
-	type validResponse struct {
-		CleanedBody string `json:"cleaned_body"`
+	type response struct {
+		ID        string `json:"id"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		Body      string `json:"body"`
+		UserID    string `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -185,5 +187,26 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 
 	cleaned := strings.Join(words, " ")
 
-	respondWithJSON(w, http.StatusOK, validResponse{CleanedBody: cleaned})
+	userID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid user_id")
+		return
+	}
+
+	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   cleaned,
+		UserID: userID,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, response{
+		ID:        chirp.ID.String(),
+		CreatedAt: chirp.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt: chirp.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Body:      chirp.Body,
+		UserID:    chirp.UserID.String(),
+	})
 }
