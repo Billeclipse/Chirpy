@@ -126,6 +126,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/healthz", handlerHealthz)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
@@ -209,4 +210,34 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		Body:      chirp.Body,
 		UserID:    chirp.UserID.String(),
 	})
+}
+
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	chirps, err := cfg.db.GetChirps(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps")
+		return
+	}
+
+	type response struct {
+		ID        string `json:"id"`
+		CreatedAt string `json:"created_at"`
+		UpdatedAt string `json:"updated_at"`
+		Body      string `json:"body"`
+		UserID    string `json:"user_id"`
+	}
+
+	resp := make([]response, 0, len(chirps))
+
+	for _, chirp := range chirps {
+		resp = append(resp, response{
+			ID:        chirp.ID.String(),
+			CreatedAt: chirp.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			UpdatedAt: chirp.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			Body:      chirp.Body,
+			UserID:    chirp.UserID.String(),
+		})
+	}
+
+	respondWithJSON(w, http.StatusOK, resp)
 }
