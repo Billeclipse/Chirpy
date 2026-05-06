@@ -10,10 +10,11 @@ VALUES (
     $1,
     $2
 )
-RETURNING *;
+RETURNING id, created_at, updated_at, email, hashed_password, is_chirpy_red;
 
 -- name: GetUserByEmail :one
-SELECT * FROM users
+SELECT id, created_at, updated_at, email, hashed_password, is_chirpy_red
+FROM users
 WHERE email = $1;
 
 -- name: UpdateUser :one
@@ -23,7 +24,7 @@ SET
     email = $2,
     hashed_password = $3
 WHERE id = $1
-RETURNING *;
+RETURNING id, created_at, updated_at, email, hashed_password, is_chirpy_red;
 
 -- name: UpgradeUserToChirpyRed :execrows
 UPDATE users

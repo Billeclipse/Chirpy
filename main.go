@@ -35,13 +35,13 @@ type userResponse struct {
 	IsChirpyRed bool   `json:"is_chirpy_red"`
 }
 
-func newUserResponse(user database.User) userResponse {
+func newUserResponse(id uuid.UUID, createdAt, updatedAt time.Time, email string, isChirpyRed bool) userResponse {
 	return userResponse{
-		ID:          user.ID.String(),
-		CreatedAt:   user.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:   user.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		Email:       user.Email,
-		IsChirpyRed: user.IsChirpyRed,
+		ID:          id.String(),
+		CreatedAt:   createdAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:   updatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Email:       email,
+		IsChirpyRed: isChirpyRed,
 	}
 }
 
@@ -120,7 +120,13 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, newUserResponse(user))
+	respondWithJSON(w, http.StatusCreated, newUserResponse(
+		user.ID,
+		user.CreatedAt,
+		user.UpdatedAt,
+		user.Email,
+		user.IsChirpyRed,
+	))
 }
 
 func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +170,13 @@ func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, newUserResponse(user))
+	respondWithJSON(w, http.StatusOK, newUserResponse(
+		user.ID,
+		user.CreatedAt,
+		user.UpdatedAt,
+		user.Email,
+		user.IsChirpyRed,
+	))
 }
 
 func main() {
@@ -474,14 +486,16 @@ func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, r *http.Request
 		} `json:"data"`
 	}
 
-	apiKey, err := auth.GetAPIKey(r.Header)
-	if err != nil || apiKey != cfg.polkaKey {
-		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
-		return
+	if cfg.polkaKey != "" {
+		apiKey, err := auth.GetAPIKey(r.Header)
+		if err != nil || apiKey != cfg.polkaKey {
+			respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+			return
+		}
 	}
 
 	params := parameters{}
-	err = json.NewDecoder(r.Body).Decode(&params)
+	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 		return
