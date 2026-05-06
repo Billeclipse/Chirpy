@@ -26,6 +26,24 @@ type apiConfig struct {
 	jwtSecret      string
 }
 
+type userResponse struct {
+	ID          string `json:"id"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	Email       string `json:"email"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
+}
+
+func newUserResponse(user database.User) userResponse {
+	return userResponse{
+		ID:          user.ID.String(),
+		CreatedAt:   user.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:   user.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
+	}
+}
+
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg.fileserverHits.Add(1)
@@ -79,13 +97,6 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		Password string `json:"password"`
 	}
 
-	type response struct {
-		ID        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-		Email     string `json:"email"`
-	}
-
 	params := parameters{}
 	err := json.NewDecoder(r.Body).Decode(&params)
 	if err != nil {
@@ -108,25 +119,13 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, response{
-		ID:        user.ID.String(),
-		CreatedAt: user.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: user.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		Email:     user.Email,
-	})
+	respondWithJSON(w, http.StatusCreated, newUserResponse(user))
 }
 
 func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
-	}
-
-	type response struct {
-		ID        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		UpdatedAt string `json:"updated_at"`
-		Email     string `json:"email"`
 	}
 
 	tokenString, err := auth.GetBearerToken(r.Header)
@@ -164,12 +163,7 @@ func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, response{
-		ID:        user.ID.String(),
-		CreatedAt: user.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		UpdatedAt: user.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-		Email:     user.Email,
-	})
+	respondWithJSON(w, http.StatusOK, newUserResponse(user))
 }
 
 func main() {
@@ -204,6 +198,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUser)
 	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUser)
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlerPolkaWebhook)
 	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 
@@ -411,6 +406,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		CreatedAt    string `json:"created_at"`
 		UpdatedAt    string `json:"updated_at"`
 		Email        string `json:"email"`
+		IsChirpyRed  bool   `json:"is_chirpy_red"`
 		Token        string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 	}
@@ -461,9 +457,43 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    user.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:    user.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		Email:        user.Email,
+		IsChirpyRed:  user.IsChirpyRed,
 		Token:        accessToken,
 		RefreshToken: refreshToken,
 	})
+}
+
+func (cfg *apiConfig) handlerPolkaWebhook(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	params := parameters{}
+	err := json.NewDecoder(r.Body).Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	rowsAffected, err := cfg.db.UpgradeUserToChirpyRed(r.Context(), params.Data.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't upgrade user")
+		return
+	}
+	if rowsAffected == 0 {
+		respondWithError(w, http.StatusNotFound, "User not found")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
