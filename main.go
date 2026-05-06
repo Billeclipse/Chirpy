@@ -304,18 +304,34 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.db.GetChirps(r.Context())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps")
-		return
-	}
-
 	type response struct {
 		ID        string `json:"id"`
 		CreatedAt string `json:"created_at"`
 		UpdatedAt string `json:"updated_at"`
 		Body      string `json:"body"`
 		UserID    string `json:"user_id"`
+	}
+
+	var (
+		chirps []database.Chirp
+		err    error
+	)
+
+	authorIDString := r.URL.Query().Get("author_id")
+	if authorIDString != "" {
+		authorID, parseErr := uuid.Parse(authorIDString)
+		if parseErr != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid author ID")
+			return
+		}
+
+		chirps, err = cfg.db.GetChirpsByAuthor(r.Context(), authorID)
+	} else {
+		chirps, err = cfg.db.GetChirps(r.Context())
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps")
+		return
 	}
 
 	resp := make([]response, 0, len(chirps))
